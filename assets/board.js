@@ -13,16 +13,32 @@ function timeAgo(iso) {
   return days + ' ימים';
 }
 
+let _lastBoard = [];
+
 function loadBoard() {
-  rpc('get_board').then(renderBoard);
+  rpc('get_board').then(function (board) {
+    _lastBoard = board;
+    document.getElementById('updated').textContent = 'עודכן ' + new Date().toLocaleTimeString('he-IL');
+    renderBoard();
+  });
 }
 
-function renderBoard(board) {
-  document.getElementById('updated').textContent = 'עודכן ' + new Date().toLocaleTimeString('he-IL');
-  if (!board.length) {
+function renderBoard() {
+  const q = document.getElementById('boardSearch').value.trim().toLowerCase();
+  const board = !q ? _lastBoard : _lastBoard.filter(function (k) {
+    return (k.name || '').toLowerCase().indexOf(q) !== -1 ||
+      (k.location || '').toLowerCase().indexOf(q) !== -1;
+  });
+
+  if (!_lastBoard.length) {
     document.getElementById('board').innerHTML = '<p class="muted">אין מפתחות רשומים.</p>';
     return;
   }
+  if (!board.length) {
+    document.getElementById('board').innerHTML = '<p class="muted">לא נמצאו מפתחות מתאימים.</p>';
+    return;
+  }
+
   let html = '<table><tr><th>מפתח</th><th>מיקום</th><th>סטטוס</th><th>אצל</th><th>מזה</th></tr>';
   board.forEach(function (k) {
     const badge = k.status === 'in'
@@ -34,6 +50,8 @@ function renderBoard(board) {
   html += '</table>';
   document.getElementById('board').innerHTML = html;
 }
+
+document.getElementById('boardSearch').addEventListener('input', renderBoard);
 
 loadBoard();
 setInterval(loadBoard, 30000); // auto-refresh, useful if left open on a wall tablet
