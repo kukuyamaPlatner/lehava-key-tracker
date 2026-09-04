@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <?!= include('Style'); ?>
+</head>
+<body>
+
+  <div id="app">
+    <div class="card" id="loadingCard">
+      <h1>טוען...</h1>
+      <div class="spinner"></div>
+    </div>
+  </div>
+
+<script>
+  const KEY_ID = <?!= JSON.stringify(keyId) ?>;
+  const LS_USER = 'keytracker_user';
+
+  function getStoredUser() {
+    try {
+      return JSON.parse(localStorage.getItem(LS_USER));
+    } catch (e) {
+      return null;
+    }
+  }
+  function setStoredUser(user) {
+    localStorage.setItem(LS_USER, JSON.stringify(user));
+  }
+  function clearStoredUser() {
+    localStorage.removeItem(LS_USER);
+  }
+
+  function render(html) {
+    document.getElementById('app').innerHTML = html;
+  }
+
+  function timeAgo(iso) {
+    if (!iso) return '';
+    const diffMs = Date.now() - new Date(iso).getTime();
+    const mins = Math.round(diffMs / 60000);
+    if (mins < 1) return 'עכשיו';
+    if (mins < 60) return mins + ' דקות';
+    const hrs = Math.round(mins / 60);
+    if (hrs < 24) return hrs + ' שעות';
+    const days = Math.round(hrs / 24);
+    return days + ' ימים';
+  }
+
+  // ---------- boot ----------
+  function boot() {
+    const user = getStoredUser();
+    if (!user) {
+      showNamePicker();
+    } else {
+      loadKeyState(user);
+    }
+  }
+
+  // ---------- name entry (first run) ----------
+  function showNamePicker() {
+    render(
+      '<div class="card">' +
+      '<h1>מי אתה?</h1>' +
+      '<p class="muted">הקלד את שמך. נזכור אותך בפעם הבאה, לא תצטרך להקליד שוב.</p>' +
+      '<input type="text" id="nameBox" placeholder="שם מלא" autofocus oninput="suggestNames()" onkeydown="if(event.key===\'Enter\')confirmName()">' +
+      '<div class="name-list" id="suggestions"></div>' +
+      '<button class="primary" onclick="confirmName()">המשך</button>' +
+      '</div>'
+    );
+    google.script.run.withSuccessHandler(function (users) {
+      window._allUsers = users;
+    }).getUsers();
+  }
+
+  function suggestNames() {
+    const q = document.getElementById('nameBox').value.trim().toLowerCase();
+    const box = document.getElementById('suggestions');
+    if (!q || !window._allUsers) { box.innerHTML = ''; return; }
+    const matches = window._allUsers.filter(function (u) {
+      return u.name.toLowerCase().indexOf(q) !== -1;
+    }).slice(0, 5);
+    box.innerHTML = matches.map(function (u) {
+      return '<button onclick="pickSuggested(\'' + u.user_id + '\', ' + JSON.stringify(u.name) + ')">' + u.name + '</button>';
+    }).join('');
+  }
+
+  function pickSuggested(userId, name) {
+    useExisting({ user_id: userId, name: name });
+  }
+
+  function confirmName() {
+    const typed = document.getElementById('nameBox').value.trim();
+    if (!typed) return;
+    render('<div class="card"><div class="spinner"></div></div>');
+    google.script.run
+      .withSuccessHandler(function (matches) {
+        if (matches.length === 0) {
+          createAndProceed(typed);
+        } else {
+          showIsThisYou(typed, matches[0]);
+        }
+      })
+      .withFailureHandler(renderError)
+      .findUserByName(typed);
+  }
+
+  function showIsThisYou(typed, match) {
+    render(
+      '<div class="card">' +
+      '<h1>מצאנו את "' + match.name + '"</h1>' +
+      '<p class="muted">כבר קיים משתמש בשם הזה. זה אתה?</p>' +
+      '<button class="primary" onclick="useExisting(' + JSON.stringify(match) + ')">כן, זה אני</button>' +
+      '<button class="secondary" onclick="showDisambiguate(' + JSON.stringify(typed) + ')">לא, זה מישהו אחר</button>' +
+      '</div>'
+    );
+  }
+
+  function useExisting(match) {
+    const user = { user_id: match.user_id, name: match.name };
+    setStoredUser(user);
+    loadKeyState(user);
+  }
+
+  function showDisambiguate(typed) {
+    render(
+      '<div class="card">' +
+      '<h1>נבדיל ביניכם</h1>' +
+      '<p class="muted">הוסף פרט מזהה לשם, למשל מקצוע או שם משפחה נוסף</p>' +
+      '<input type="text" id="disambigBox" value="' + typed + ' — ">' +
+      '<button class="primary" onclick="submitDisambiguated()">המשך</button>' +
+      '</div>'
+    );
+    // put cursor at the end
+    const box = document.getElementById('disambigBox');
+    box.focus();
+    box.setSelectionRange(box.value.length, box.value.length);
+  }
+
+  function submitDisambiguated() {
+    const typed = document.getElementById('disambigBox').value.trim();
+    if (!typed) return;
+    render('<div class="card"><div class="spinner"></div></div>');
+    google.script.run
+      .withSuccessHandler(function (matches) {
+        if (matches.length === 0) {
+          createAndProceed(typed);
+        } else {
+          // still a collision — loop back to the same confirm/disambiguate flow
+          showIsThisYou(typed, matches[0]);
+        }
+      })
+      .withFailureHandler(renderError)
+      .findUserByName(typed);
+  }
+
+  function createAndProceed(name) {
+    render('<div class="card"><div class="spinner"></div></div>');
+    google.script.run
+      .withSuccessHandler(function (result) {
+        const user = { user_id: result.user_id, name: result.name };
+        setStoredUser(user);
+        loadKeyState(user);
+      })
+      .withFailureHandler(function (err) {
+        // Someone else claimed this exact name in the split second between
+        // our check and our write — just re-run the lookup and ask again.
+        if (String(err).indexOf('DUPLICATE') !== -1) {
+          confirmNameFor(name);
+        } else {
+          renderError(err);
+        }
+      })
+      .createUniqueUser(name);
+  }
+
+  function confirmNameFor(name) {
+    google.script.run
+      .withSuccessHandler(function (matches) {
+        if (matches.length > 0) showIsThisYou(name, matches[0]);
+        else createAndProceed(name);
+      })
+      .findUserByName(name);
+  }
+
+  // ---------- main key state ----------
+  function loadKeyState(user) {
+    render(
+      '<div class="card">' +
+      '<h1>' + KEY_ID + '</h1>' +
+      '<div class="spinner"></div>' +
+      '</div>'
+    );
+    google.script.run
+      .withSuccessHandler(function (state) { renderKeyState(state, user); })
+      .withFailureHandler(function (err) { renderError(err); })
+      .getKeyState(KEY_ID);
+  }
+
+  function renderError(err) {
+    render(
+      '<div class="card">' +
+      '<h1>שגיאה</h1>' +
+      '<p>לא הצלחנו לטעון את המפתח. לחץ לנסות שוב.</p>' +
+      '<button class="primary" onclick="boot()">נסה שוב</button>' +
+      '</div>'
+    );
+  }
+
+  function renderKeyState(state, user) {
+    if (!state.found) {
+      render(
+        '<div class="card">' +
+        '<h1>תג לא רשום</h1>' +
+        '<p>המפתח <b>' + KEY_ID + '</b> עדיין לא רשום במערכת. פנה למנהל.</p>' +
+        '</div>'
+      );
+      return;
+    }
+
+    let body = '<div class="card"><h1>' + state.name + '</h1>';
+    if (state.location) body += '<p class="muted">' + state.location + '</p>';
+
+    if (state.status === 'in') {
+      body += '<span class="status-badge status-in">זמין</span>';
+      body += '<button class="primary" onclick="doAction(\'out\',\'auto\')">קח את המפתח</button>';
+    } else if (state.holder_id === user.user_id) {
+      body += '<span class="status-badge status-out">אצלך מזה ' + timeAgo(state.last_updated) + '</span>';
+      body += '<button class="primary return" onclick="doAction(\'in\',\'auto\')">החזר את המפתח</button>';
+    } else {
+      body += '<span class="status-badge status-warn">⚠️ רשום אצל ' + state.holder_name + ' מזה ' + timeAgo(state.last_updated) + '</span>';
+      body += '<button class="primary return" onclick="doAction(\'in\',\'manual\',' + JSON.stringify('הוחזר במקום ' + state.holder_name) + ')">החזר בשביל ' + state.holder_name + '</button>';
+      body += '<button class="secondary" onclick="doSwap(' + JSON.stringify(state.holder_id) + ',' + JSON.stringify(state.holder_name) + ')">קח את זה — אצלי עכשיו</button>';
+    }
+
+    body += '</div>';
+    body += '<div class="link-row">';
+    body += '<span class="link" onclick="switchUser()">לא ' + user.name + '? החלף משתמש</span>';
+    body += '</div>';
+
+    render(body);
+    window._currentState = state;
+    window._currentUser = user;
+  }
+
+  function switchUser() {
+    clearStoredUser();
+    showNamePicker();
+  }
+
+  function doAction(action, method, note) {
+    const user = window._currentUser;
+    render('<div class="card"><div class="spinner"></div></div>');
+    google.script.run
+      .withSuccessHandler(function (newState) { renderSuccess(newState, action, user); })
+      .withFailureHandler(renderError)
+      .recordAction(KEY_ID, user.user_id, user.name, action, method || 'auto', note || '');
+  }
+
+  function doSwap(fromUserId, fromUserName) {
+    const user = window._currentUser;
+    render('<div class="card"><div class="spinner"></div></div>');
+    google.script.run
+      .withSuccessHandler(function (newState) { renderSuccess(newState, 'out', user); })
+      .withFailureHandler(renderError)
+      .recordSwap(KEY_ID, fromUserId, fromUserName, user.user_id, user.name);
+  }
+
+  function renderSuccess(state, action, user) {
+    const msg = action === 'out' ? 'המפתח נרשם על שמך ✔' : 'המפתח הוחזר ✔';
+    render(
+      '<div class="success-banner">' + msg + '</div>' +
+      '<div class="card"><h1>' + state.name + '</h1>' +
+      '<span class="status-badge ' + (state.status === 'in' ? 'status-in' : 'status-out') + '">' +
+      (state.status === 'in' ? 'זמין' : 'אצל ' + (state.holder_name || user.name)) +
+      '</span></div>' +
+      '<div class="link-row"><span class="link" onclick="loadKeyState(window._currentUser)">רענן</span></div>'
+    );
+  }
+
+  boot();
+</script>
+</body>
+</html>

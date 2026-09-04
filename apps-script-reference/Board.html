@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <?!= include('Style'); ?>
+</head>
+<body>
+  <div class="link-row" style="text-align:left; margin-top:0;">
+    <a id="adminLink" href="#" target="_top" class="secondary" style="display:inline-block; width:auto; padding:8px 16px; text-decoration:none;">כניסת מנהל</a>
+  </div>
+  <div class="card">
+    <h1>לוח מפתחות</h1>
+    <p class="muted" id="updated"></p>
+    <div id="board"><div class="spinner"></div></div>
+  </div>
+
+<script>
+  document.getElementById('adminLink').href = location.href.split('?')[0] + '?admin=1';
+
+  function timeAgo(iso) {
+    if (!iso) return '';
+    const diffMs = Date.now() - new Date(iso).getTime();
+    const mins = Math.round(diffMs / 60000);
+    if (mins < 1) return 'עכשיו';
+    if (mins < 60) return mins + ' ד׳';
+    const hrs = Math.round(mins / 60);
+    if (hrs < 24) return hrs + ' שע׳';
+    const days = Math.round(hrs / 24);
+    return days + ' ימים';
+  }
+
+  function load() {
+    google.script.run.withSuccessHandler(render).getBoard();
+  }
+
+  function render(board) {
+    document.getElementById('updated').textContent = 'עודכן ' + new Date().toLocaleTimeString('he-IL');
+    if (!board.length) {
+      document.getElementById('board').innerHTML = '<p class="muted">אין מפתחות רשומים.</p>';
+      return;
+    }
+    let html = '<table><tr><th>מפתח</th><th>מיקום</th><th>סטטוס</th><th>אצל</th><th>מזה</th></tr>';
+    board.forEach(function (k) {
+      const badge = k.status === 'in'
+        ? '<span class="status-badge status-in">זמין</span>'
+        : '<span class="status-badge status-out">בחוץ</span>';
+      html += '<tr><td>' + k.name + '</td><td>' + (k.location || '') + '</td><td>' + badge + '</td>' +
+        '<td>' + (k.holder_name || '—') + '</td><td>' + (k.status === 'out' ? timeAgo(k.last_updated) : '—') + '</td></tr>';
+    });
+    html += '</table>';
+    document.getElementById('board').innerHTML = html;
+  }
+
+  load();
+  setInterval(load, 30000); // auto-refresh, useful if left open on a wall tablet
+</script>
+</body>
+</html>

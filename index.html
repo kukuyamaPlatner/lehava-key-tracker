@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>מעקב מפתחות</title>
+<base target="_top">
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+
+  <!-- Scan route (?k=<key_id>) -->
+  <div id="scanRoute" hidden>
+    <div id="app">
+      <div class="card" id="loadingCard">
+        <h1>טוען...</h1>
+        <div class="spinner"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Board route (no params) -->
+  <div id="boardRoute" hidden>
+    <div class="link-row" style="text-align:left; margin-top:0;">
+      <a id="adminLink" href="#" target="_top" class="secondary" style="display:inline-block; width:auto; padding:8px 16px; text-decoration:none;">כניסת מנהל</a>
+    </div>
+    <div class="card">
+      <h1>לוח מפתחות</h1>
+      <p class="muted" id="updated"></p>
+      <div id="board"><div class="spinner"></div></div>
+    </div>
+  </div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="assets/config.js"></script>
+<script src="assets/supabase-client.js"></script>
+<script>
+  const _params = new URLSearchParams(location.search);
+  const _script = document.createElement('script');
+  if (_params.get('k')) {
+    document.getElementById('scanRoute').hidden = false;
+    _script.src = 'assets/scan.js';
+  } else {
+    document.getElementById('boardRoute').hidden = false;
+    _script.src = 'assets/board.js';
+  }
+  document.body.appendChild(_script);
+</script>
+</body>
+</html>
