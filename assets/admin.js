@@ -176,7 +176,8 @@ function renderUsersTab() {
     html += '<table><tr><th>שם</th><th>פעולות</th></tr>';
     users.filter(function (u) { return u.active !== false; }).forEach(function (u) {
       html += '<tr><td>' + u.name + '</td>' +
-        '<td><span class="link" onclick="deactivateUser(\'' + u.user_id + '\')">השבת</span></td></tr>';
+        '<td><span class="link" onclick="deactivateUser(\'' + u.user_id + '\')">השבת</span> ' +
+        '<span class="link" onclick="deleteUser(' + j(u.user_id) + ',' + j(u.name) + ')" style="color:#d70015;">מחק</span></td></tr>';
     });
     html += '</table><div id="userForm"></div>';
     document.getElementById('panel').innerHTML = html;
@@ -202,6 +203,19 @@ function saveUser(userId) {
 function deactivateUser(userId) {
   if (!confirm('להשבית משתמש זה?')) return;
   rpc('admin_deactivate_user', { p_user_id: userId, p_pass: ADMIN_PASS }).then(renderUsersTab);
+}
+
+function deleteUser(userId, userName) {
+  if (!confirm('למחוק לצמיתות את ' + userName + '? היסטוריית הלוג שלו תישמר, אבל לא ניתן לבטל פעולה זו.')) return;
+  rpc('admin_delete_user', { p_user_id: userId, p_pass: ADMIN_PASS })
+    .then(renderUsersTab)
+    .catch(function (err) {
+      if (String(err.message || err).indexOf('HOLDING_KEY') !== -1) {
+        alert('לא ניתן למחוק — המשתמש מחזיק כרגע במפתח. יש להחזיר את המפתח קודם.');
+      } else {
+        alert('שגיאה במחיקת המשתמש.');
+      }
+    });
 }
 
 // ---------- Live board tab ----------

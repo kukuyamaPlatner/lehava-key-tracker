@@ -452,6 +452,29 @@ begin
 end;
 $$;
 
+-- Permanently removes a user row (unlike admin_deactivate_user, which only
+-- hides them). Refuses if the user currently holds a key — the FK on
+-- keys.holder enforces this at the database level; we just turn the raw
+-- constraint violation into a message the UI can show.
+create or replace function admin_delete_user(p_user_id text, p_pass text)
+returns json
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  perform admin_check_pass(p_pass);
+
+  begin
+    delete from users where user_id = p_user_id;
+  exception when foreign_key_violation then
+    raise exception 'HOLDING_KEY';
+  end;
+
+  return admin_list_users(p_pass);
+end;
+$$;
+
 create or replace function admin_force_check_in(p_key_id text, p_pass text)
 returns json
 language plpgsql
@@ -555,6 +578,7 @@ grant execute on function
   admin_next_user_id(text),
   admin_upsert_user(jsonb, text),
   admin_deactivate_user(text, text),
+  admin_delete_user(text, text),
   admin_force_check_in(text, text),
   admin_report(text, jsonb, text),
   admin_rebuild_status(text)
