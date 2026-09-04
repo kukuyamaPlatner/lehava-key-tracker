@@ -14,6 +14,25 @@ function j(value) {
   return JSON.stringify(value).replace(/"/g, '&quot;');
 }
 
+// The scan URL to write onto a tag for a given key_id. GitHub Pages serves
+// index.html for a bare directory request, so the URL can skip the
+// filename entirely — shorter, and easier to type by hand if ever needed.
+function scanUrlFor(keyId) {
+  return new URL('./?k=' + encodeURIComponent(keyId), location.href).href;
+}
+
+function copyKeyUrl(url) {
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(url).then(function () {
+      alert('הקישור הועתק');
+    }, function () {
+      alert(url);
+    });
+  } else {
+    alert(url);
+  }
+}
+
 // ---------- boot: try a remembered passcode first ----------
 function boot() {
   const stored = localStorage.getItem(LS_ADMIN_PASS);
@@ -98,10 +117,11 @@ function renderKeysTab() {
   document.getElementById('panel').innerHTML = '<div class="spinner"></div>';
   rpc('admin_list_keys', { p_pass: ADMIN_PASS }).then(function (keys) {
     let html = '<button class="primary" onclick="newKeyForm()">+ מפתח חדש</button>';
-    html += '<table><tr><th>מזהה</th><th>שם</th><th>מיקום</th><th>סטטוס</th><th>פעולות</th></tr>';
+    html += '<table><tr><th>מזהה</th><th>שם</th><th>מיקום</th><th>סטטוס</th><th>קישור לתג</th><th>פעולות</th></tr>';
     keys.filter(function (k) { return k.active !== false; }).forEach(function (k) {
       html += '<tr><td>' + k.key_id + '</td><td>' + k.name + '</td><td>' + (k.location || '') + '</td>' +
         '<td>' + (k.status === 'out' ? 'בחוץ' : 'זמין') + '</td>' +
+        '<td><span class="link" onclick="copyKeyUrl(' + j(scanUrlFor(k.key_id)) + ')" style="font-size:12px;">העתק קישור</span></td>' +
         '<td><span class="link" onclick="editKeyForm(' + j(k) + ')">ערוך</span> ' +
         '<span class="link" onclick="retireKey(\'' + k.key_id + '\')">בטל</span></td></tr>';
     });
@@ -125,7 +145,9 @@ function showKeyForm(key, isNew) {
   const html =
     '<div class="card">' +
     '<h1>' + (isNew ? 'מפתח חדש' : 'עריכת מפתח') + '</h1>' +
-    '<p class="muted">מזהה תג (כתוב את זה על התג): <b>' + key.key_id + '</b></p>' +
+    '<p class="muted">מזהה תג: <b>' + key.key_id + '</b></p>' +
+    '<p class="muted" style="word-break:break-all;">קישור לתג: ' + scanUrlFor(key.key_id) + '</p>' +
+    '<button class="secondary" onclick="copyKeyUrl(' + j(scanUrlFor(key.key_id)) + ')">העתק קישור</button>' +
     '<input type="text" id="kName" placeholder="שם, למשל מעבדת מדעים" value="' + (key.name || '') + '">' +
     '<input type="text" id="kLocation" placeholder="מיקום (אופציונלי)" value="' + (key.location || '') + '">' +
     '<button class="primary" onclick="saveKey(\'' + key.key_id + '\')">שמור</button>' +

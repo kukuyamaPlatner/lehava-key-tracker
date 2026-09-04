@@ -192,12 +192,7 @@ function renderError() {
 
 function renderKeyState(state, user) {
   if (!state.found) {
-    render(
-      '<div class="card">' +
-      '<h1>תג לא רשום</h1>' +
-      '<p>המפתח <b>' + KEY_ID + '</b> עדיין לא רשום במערכת. פנה למנהל.</p>' +
-      '</div>'
-    );
+    renderKeySetup(user);
     return;
   }
 
@@ -224,6 +219,52 @@ function renderKeyState(state, user) {
   render(body);
   window._currentState = state;
   window._currentUser = user;
+}
+
+// ---------- unconfigured key: self-serve setup, gated by admin passcode ----------
+function renderKeySetup(user, prefill, errorMsg) {
+  prefill = prefill || {};
+  render(
+    '<div class="card">' +
+    '<h1>' + KEY_ID + '</h1>' +
+    '<p class="muted">המפתח הזה עדיין לא מוגדר במערכת. אם אתה המנהל, אפשר להגדיר אותו כאן.</p>' +
+    (errorMsg ? '<p style="color:#d70015;">' + errorMsg + '</p>' : '') +
+    '<input type="text" id="setupName" placeholder="שם המפתח, למשל מעבדת מדעים" value="' + (prefill.name || '') + '">' +
+    '<input type="text" id="setupLocation" placeholder="מיקום (אופציונלי)" value="' + (prefill.location || '') + '">' +
+    '<input type="password" id="setupPass" placeholder="קוד גישה למנהל">' +
+    '<button class="primary" onclick="submitKeySetup()">הגדר מפתח</button>' +
+    '</div>' +
+    '<div class="link-row"><span class="link" onclick="switchUser()">לא ' + user.name + '? החלף משתמש</span></div>'
+  );
+  window._currentUser = user;
+}
+
+function submitKeySetup() {
+  const name = document.getElementById('setupName').value.trim();
+  const location = document.getElementById('setupLocation').value.trim();
+  const pass = document.getElementById('setupPass').value;
+  const prefill = { name: name, location: location };
+
+  if (!name) {
+    renderKeySetup(window._currentUser, prefill, 'נא להזין שם למפתח');
+    return;
+  }
+  if (!pass) {
+    renderKeySetup(window._currentUser, prefill, 'נא להזין קוד גישה');
+    return;
+  }
+
+  render('<div class="card"><div class="spinner"></div></div>');
+  rpc('admin_upsert_key', {
+    p_key: { key_id: KEY_ID, name: name, location: location, active: true },
+    p_pass: pass,
+  })
+    .then(function () {
+      loadKeyState(window._currentUser);
+    })
+    .catch(function () {
+      renderKeySetup(window._currentUser, prefill, 'קוד גישה שגוי, נסה שוב');
+    });
 }
 
 function switchUser() {
